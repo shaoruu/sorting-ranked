@@ -3,24 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SORTING.EXE: sorting algorithms, ranked</title>
+    <title>Sorting Algorithms, Ranked</title>
     <meta
       name="description"
       content="21 sorting algorithms race on the same array, with sound. Ranked by steps."
     />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=VT323&display=swap"
-      rel="stylesheet"
-    />
   </head>
   <body>
     <header>
       <div class="title">
-        <h1>SORTING.EXE<span class="cursor">_</span></h1>
-        <p>21 sorting algorithms, same array, same clock. turn your sound on.</p>
+        <h1>Sorting Algorithms, Ranked</h1>
+        <p>21 algorithms, same array, same clock. Sound on.</p>
       </div>
       <div class="controls">
         <button id="play" class="primary">▶ start</button>
@@ -55,7 +49,7 @@
     </header>
     <dialog id="video-dialog">
       <div class="dialog-head">
-        <h2>EXPORT VIDEO</h2>
+        <h2>Export video</h2>
         <button id="video-close" aria-label="close">✕</button>
       </div>
       <div class="video-body">
@@ -63,8 +57,8 @@
           <label>
             format
             <select id="video-mode">
-              <option value="tour">tour: one at a time, worst → best</option>
-              <option value="race">race: all at once, time-lapse clock</option>
+              <option value="tour">fullscreen: one at a time, worst → best</option>
+              <option value="race">grid: all at once, time-lapse clock</option>
             </select>
           </label>
           <label>
@@ -73,6 +67,14 @@
               <option value="16:9">16:9 · 1920×1080</option>
               <option value="1:1">1:1 · 1080×1080</option>
               <option value="9:16">9:16 · 1080×1920</option>
+            </select>
+          </label>
+          <label>
+            n
+            <select id="video-n">
+              <option value="64">64</option>
+              <option value="128">128</option>
+              <option value="256">256</option>
             </select>
           </label>
           <label>
@@ -89,6 +91,8 @@
           <p id="video-summary" class="meta"></p>
           <p id="video-duration"></p>
           <div class="video-actions">
+            <button id="video-preview">▶ preview</button>
+            <button id="video-fullscreen">⛶ fullscreen</button>
             <button id="video-render" class="primary">render mp4</button>
             <button id="video-cancel" hidden>cancel</button>
           </div>

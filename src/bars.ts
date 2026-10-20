@@ -1,15 +1,16 @@
 import type { Op } from "./arr.ts";
 
+// Sound of Sorting palette: white bars on black, red for what's being touched, green for verified
 export const BAR_COLORS = {
-  bg: "#0f130f",
-  bar: "#cfe8cf",
-  done: "#3ddc84",
-  sweep: "#ffffff",
-  dnf: "#4a3434",
-  cmp: "#ff4d4d",
-  swap: "#ffd23f",
-  write: "#ffd23f",
-  read: "#4da3ff",
+  bg: "#000000",
+  bar: "#ffffff",
+  done: "#00ff00",
+  sweep: "#ff0000",
+  dnf: "#3a3a3a",
+  cmp: "#ff0000",
+  swap: "#ff0000",
+  write: "#ff0000",
+  read: "#ff0000",
 } as const;
 
 export type BarState = {
@@ -34,7 +35,7 @@ export function drawBars(
   ctx.fillRect(x, y, w, h);
   const n = a.length;
   const bw = w / n;
-  const gap = bw >= 4 ? Math.max(1, Math.floor(bw * 0.18)) : 0;
+  const gap = bw >= 5 ? Math.max(1, Math.floor(bw * 0.12)) : 0;
   const hj = hl && "j" in hl ? hl.j : -1;
   const sweepAt = Math.ceil(sweep) - 1;
   for (let i = 0; i < n; i++) {

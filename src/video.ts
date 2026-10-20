@@ -1,7 +1,7 @@
-import { ALGOS, type Algo } from "./algorithms.ts";
+import { ALGOS, title, type Algo } from "./algorithms.ts";
 import { Arr, type Op, type Sorter } from "./arr.ts";
 import { FANFARE, pitch, WAVE_GAIN } from "./audio.ts";
-import { drawBars } from "./bars.ts";
+import { BAR_COLORS, drawBars } from "./bars.ts";
 import { benchmark } from "./benchmark.ts";
 import { INPUTS, makeInput, mulberry32, type InputKind } from "./inputs.ts";
 
@@ -40,12 +40,14 @@ export type Tone = {
 };
 
 const sec = (s: number) => Math.round(s * FPS);
-const INTRO = sec(2.4);
-const SWEEP = sec(0.8);
-const HOLD = sec(0.5);
-const WIN_HOLD = sec(1.4);
+const INTRO = sec(1.6);
+const SHUFFLE = sec(0.7);
+const SETTLE = sec(0.15);
+const SWEEP = sec(0.9);
+const HOLD = sec(0.4);
+const WIN_HOLD = sec(1.2);
 const RACE_HOLD = sec(1.5);
-const OUTRO = sec(7);
+const OUTRO = sec(6);
 // Race clock is exponential: the fastest finisher lands at this fraction of the race
 const FIRST_FINISH = 0.15;
 
@@ -55,10 +57,10 @@ export function estimateSeconds(opts: VideoOpts) {
   const frames =
     opts.mode === "tour"
       ? INTRO +
-        countAlgos(opts.memes) * (sec(opts.seconds) + SWEEP + HOLD) +
+        countAlgos(opts.memes) * (SHUFFLE + SETTLE + sec(opts.seconds) + SWEEP + HOLD) +
         (WIN_HOLD - HOLD) +
         OUTRO
-      : INTRO + sec(opts.seconds) + RACE_HOLD + OUTRO;
+      : INTRO + SHUFFLE + SETTLE + sec(opts.seconds) + RACE_HOLD + OUTRO;
   return frames / FPS;
 }
 
@@ -79,6 +81,9 @@ export type Plan = {
   width: number;
   height: number;
   base: number[];
+  sorted: number[];
+  // Swaps that turn sorted into base, shown before every sort like the old videos
+  shuffle: [number, number][];
   max: number;
   // Best first
   entries: Entry[];
@@ -97,9 +102,32 @@ function dryRun(algo: Algo, base: number[], cap: number): Stats {
   return { steps: arr.steps, cmps: arr.cmps, writes: arr.writes, dnf };
 }
 
+// Fixes positions in a random order so it looks like a shuffle rather than a sweep
+function shuffleSwaps(sorted: number[], base: number[], rand: () => number) {
+  const a = sorted.slice();
+  const order = a.map((_, i) => i);
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  const fixed = new Uint8Array(a.length);
+  const swaps: [number, number][] = [];
+  for (const i of order) {
+    fixed[i] = 1;
+    if (a[i] === base[i]) continue;
+    let j = 0;
+    while (fixed[j] || a[j] !== base[i]) j++;
+    [a[i], a[j]] = [a[j], a[i]];
+    swaps.push([i, j]);
+  }
+  return swaps;
+}
+
 export async function makePlan(opts: VideoOpts): Promise<Plan> {
   const [width, height] = DIMENSIONS[opts.aspect];
-  const base = makeInput(opts.input, opts.n, mulberry32(opts.seed));
+  const rand = mulberry32(opts.seed);
+  const base = makeInput(opts.input, opts.n, rand);
+  const sorted = base.slice().sort((x, y) => x - y);
   const algos = ALGOS.filter((a) => opts.memes || !a.meme);
   const stats = new Map<Algo, Stats>();
   for (const a of algos) if (!a.dnf) stats.set(a, dryRun(a, base, Infinity));
@@ -126,28 +154,33 @@ export async function makePlan(opts: VideoOpts): Promise<Plan> {
     e.rank = 1 + entries.filter((o) => o.score < e.score).length;
   }
   entries.sort((a, b) => a.score - b.score || 0);
-  return { opts, width, height, base, max: Math.max(...base), entries };
+  return {
+    opts,
+    width,
+    height,
+    base,
+    sorted,
+    shuffle: shuffleSwaps(sorted, base, rand),
+    max: sorted[sorted.length - 1],
+    entries,
+  };
 }
 
 // ---- drawing helpers
 
 const C = {
-  bg: "#0a0c0a",
-  panel: "#0f130f",
-  line: "#1d241d",
-  lineHi: "#2f3a2f",
-  fg: "#cfe8cf",
-  dim: "#6b806b",
-  accent: "#3ddc84",
-  red: "#ff4d4d",
-  gold: "#ffd23f",
-  silver: "#c9d1d9",
-  bronze: "#e0915a",
+  bg: "#000000",
+  fg: "#ffffff",
+  dim: "#9a9a9a",
+  faint: "#5a5a5a",
+  line: "#262626",
+  red: BAR_COLORS.cmp,
+  green: BAR_COLORS.done,
 };
 
 const URL_TEXT = "sorting-ranked.vercel.app";
-const vt = (px: number) => `${Math.round(px)}px VT323, monospace`;
-const mono = (px: number, weight = 400) => `${weight} ${Math.round(px)}px "IBM Plex Mono", monospace`;
+const FONT = '"Helvetica Neue", Helvetica, Arial, sans-serif';
+const sans = (px: number, weight = 400) => `${weight} ${Math.round(px)}px ${FONT}`;
 const fmt = (x: number) => Math.round(x).toLocaleString("en-US");
 const easeOut = (x: number) => 1 - (1 - x) ** 3;
 
@@ -167,14 +200,6 @@ function text(
   ctx.fillText(s, x, y);
 }
 
-function glow(ctx: CanvasRenderingContext2D, color: string, blur: number, fn: () => void) {
-  ctx.save();
-  ctx.shadowColor = color;
-  ctx.shadowBlur = blur;
-  fn();
-  ctx.restore();
-}
-
 function measure(ctx: CanvasRenderingContext2D, s: string, font: string) {
   ctx.font = font;
   return ctx.measureText(s).width;
@@ -186,46 +211,15 @@ function fit(ctx: CanvasRenderingContext2D, s: string, font: string, maxW: numbe
   return `${s}…`;
 }
 
-function wrap(ctx: CanvasRenderingContext2D, s: string, font: string, maxW: number) {
-  const lines: string[] = [];
-  let line = "";
-  for (const word of s.split(" ")) {
-    const next = line ? `${line} ${word}` : word;
-    if (line && measure(ctx, next, font) > maxW) {
-      lines.push(line);
-      line = word;
-    } else line = next;
-  }
-  if (line) lines.push(line);
-  return lines;
-}
-
-function rankColor(rank: number, dnf: boolean) {
-  if (dnf) return C.red;
-  return rank === 1 ? C.gold : rank === 2 ? C.silver : rank === 3 ? C.bronze : C.accent;
-}
-
-function hueColor(rank: number, total: number) {
-  const t = (rank - 1) / Math.max(1, total - 1);
-  return `hsl(${Math.round(140 - 140 * t)} 70% ${Math.round(56 - 8 * t)}%)`;
-}
-
-function panel(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, border: string) {
-  ctx.beginPath();
-  ctx.roundRect(x, y, w, h, 8);
-  ctx.fillStyle = C.panel;
-  ctx.fill();
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = border;
-  ctx.stroke();
-}
-
-function background(ctx: CanvasRenderingContext2D, plan: Plan, watermark = true) {
+function clear(ctx: CanvasRenderingContext2D, plan: Plan) {
   ctx.fillStyle = C.bg;
   ctx.fillRect(0, 0, plan.width, plan.height);
-  if (watermark) {
-    text(ctx, URL_TEXT, plan.width - 40, plan.height - 30, mono(22), C.dim, "right");
-  }
+}
+
+// The old videos show the delay per array access; here it's per step
+function delayLabel(stepsPerSec: number) {
+  const ms = 1000 / Math.max(1e-9, stepsPerSec);
+  return `${ms >= 1 ? ms.toFixed(2) : ms.toPrecision(2)} ms delay`;
 }
 
 const inputLabel = (plan: Plan) => INPUTS.find((i) => i.id === plan.opts.input)!.label;
@@ -233,34 +227,31 @@ const inputLabel = (plan: Plan) => INPUTS.find((i) => i.id === plan.opts.input)!
 const toneDur = (stepsPerSec: number) => Math.min(0.12, Math.max(0.04, 2 / stepsPerSec));
 
 function fanfareTones(tones: Tone[], t: number) {
-  for (const [delay, freq, dur] of FANFARE) tones.push({ t: t + delay, freq, dur, vol: 0.8 });
+  for (const [delay, freq, dur] of FANFARE) tones.push({ t: t + delay, freq, dur, vol: 0.6 });
 }
 
-// ---- intro and outro cards, shared by both modes
+// ---- intro and outro, shared by both modes
 
 function introTones(local: number, t: number, tones: Tone[]) {
-  if (local === 8) tones.push({ t, freq: 880, dur: 0.08, vol: 0.6, wave: "square" });
-  if (local === 16) tones.push({ t, freq: 1320, dur: 0.16, vol: 0.6, wave: "square" });
+  if (local === 6) tones.push({ t, freq: 660, dur: 0.1, vol: 0.5 });
+  if (local === 14) tones.push({ t, freq: 990, dur: 0.18, vol: 0.5 });
 }
 
 function drawIntro(ctx: CanvasRenderingContext2D, plan: Plan, local: number) {
-  background(ctx, plan);
+  clear(ctx, plan);
   const { width: W, height: H, opts } = plan;
   const cx = W / 2;
   const cy = H / 2;
-  ctx.globalAlpha = Math.min(1, local / 12);
-  const cursor = Math.floor(local / 24) % 2 === 0 ? "_" : " ";
-  glow(ctx, C.accent, 40, () =>
-    text(ctx, `SORTING.EXE${cursor}`, cx, cy - 40, vt(W < H ? 150 : 190), C.accent, "center")
-  );
-  text(ctx, `${plan.entries.length} sorting algorithms, ranked`, cx, cy + 50, mono(46, 600), C.fg, "center");
-  const how = opts.mode === "tour" ? "worst to best" : "all at once, same clock";
-  text(ctx, `${how} · n = ${opts.n} · ${inputLabel(plan)}`, cx, cy + 110, mono(28), C.dim, "center");
-  text(ctx, "sound on ♪", cx, cy + 170, mono(28), C.accent, "center");
+  ctx.globalAlpha = Math.min(1, local / 10);
+  const big = W < H ? 64 : 84;
+  text(ctx, `${plan.entries.length} Sorting Algorithms, Ranked`, cx, cy, sans(big, 700), C.fg, "center");
+  const how = opts.mode === "tour" ? "worst to best" : "all at once";
+  text(ctx, `${how} · n = ${opts.n} · ${inputLabel(plan)} input`, cx, cy + big * 0.9, sans(big * 0.4), C.dim, "center");
+  text(ctx, "sound on", cx, cy + big * 1.55, sans(big * 0.34), C.faint, "center");
   ctx.globalAlpha = 1;
 }
 
-const REVEAL_DELAY = 12;
+const REVEAL_DELAY = 10;
 const REVEAL_EVERY = 5;
 
 function outroTones(plan: Plan, local: number, t: number, tones: Tone[]) {
@@ -273,26 +264,26 @@ function outroTones(plan: Plan, local: number, t: number, tones: Tone[]) {
 }
 
 function drawOutro(ctx: CanvasRenderingContext2D, plan: Plan, local: number) {
-  background(ctx, plan, false);
+  clear(ctx, plan);
   const { width: W, height: H, entries, opts } = plan;
   const n = entries.length;
-  const cx = W / 2;
-  glow(ctx, C.accent, 30, () => text(ctx, "FINAL RANKING", cx, 150, vt(110), C.accent, "center"));
+  const tall = W < H;
+  const tableW = Math.min(W - (tall ? 96 : 160), 1400);
+  const x0 = (W - tableW) / 2;
+  text(ctx, "Final Ranking", x0, 130, sans(tall ? 68 : 72, 700), C.fg);
   const sub =
     opts.rankBy === "overall"
-      ? `n = ${opts.n} · geometric mean of steps over 5 inputs · lower wins`
-      : `n = ${opts.n} · ${inputLabel(plan)} · fewer steps wins`;
-  text(ctx, sub, cx, 200, mono(24), C.dim, "center");
+      ? `n = ${opts.n} · geometric mean of steps over 5 inputs · lower is better`
+      : `n = ${opts.n} · ${inputLabel(plan)} input · fewer steps is better`;
+  text(ctx, sub, x0, 178, sans(26), C.dim);
 
-  const top = 250;
+  const top = 220;
   const bottom = H - 90;
-  const rowH = Math.min(W < H ? 76 : 60, (bottom - top) / n);
-  const fs = rowH * 0.6;
-  const tableW = Math.min(W - 96, 1400);
-  const x0 = (W - tableW) / 2;
-  const rankW = measure(ctx, "#21", vt(fs * 1.35)) + 16;
-  const nameW = Math.max(...entries.map((e) => measure(ctx, e.algo.name, mono(fs, 600)))) + 24;
-  const valueW = measure(ctx, "3,412,345", mono(fs)) + 16;
+  const rowH = Math.min(tall ? 76 : 60, (bottom - top) / n);
+  const fs = rowH * 0.56;
+  const rankW = measure(ctx, "#21", sans(fs, 700)) + 20;
+  const nameW = Math.max(...entries.map((e) => measure(ctx, title(e.algo), sans(fs)))) + 28;
+  const valueW = measure(ctx, "3,412,345", sans(fs)) + 20;
   const barX = x0 + rankW + nameW;
   const barW = Math.max(40, tableW - rankW - nameW - valueW);
   const finite = entries.filter((e) => !e.dnf).map((e) => Math.log(e.score));
@@ -304,24 +295,23 @@ function drawOutro(ctx: CanvasRenderingContext2D, plan: Plan, local: number) {
     if (local < revealAt) return;
     const p = easeOut(Math.min(1, (local - revealAt) / 14));
     const y = top + i * rowH;
-    const base = y + rowH * 0.72;
+    const base = y + rowH * 0.7;
+    const winner = e.rank === 1 && !e.dnf;
+    const color = e.dnf ? C.red : winner ? C.green : C.fg;
     ctx.globalAlpha = p;
-    const color = rankColor(e.rank, e.dnf);
-    const draw = () => text(ctx, e.dnf ? "DNF" : `#${e.rank}`, x0, base, vt(fs * 1.35), color);
-    if (e.rank === 1 && !e.dnf) glow(ctx, C.gold, 20, draw);
-    else draw();
-    text(ctx, e.algo.name, x0 + rankW, base, mono(fs, 600), e.rank === 1 ? C.gold : C.fg);
+    text(ctx, e.dnf ? "DNF" : `#${e.rank}`, x0, base, sans(fs, 700), color);
+    text(ctx, title(e.algo), x0 + rankW, base, sans(fs, winner ? 700 : 400), color);
     if (e.dnf) {
-      text(ctx, "∞", x0 + tableW, base, mono(fs), C.red, "right");
+      text(ctx, "never finished", x0 + tableW, base, sans(fs), C.red, "right");
     } else {
-      const frac = 0.06 + 0.94 * ((Math.log(e.score) - lo) / span);
-      ctx.fillStyle = hueColor(e.rank, n);
-      ctx.fillRect(barX, y + rowH * 0.25, barW * frac * p, rowH * 0.5);
-      text(ctx, fmt(e.score), x0 + tableW, base, mono(fs), C.fg, "right");
+      const frac = 0.04 + 0.96 * ((Math.log(e.score) - lo) / span);
+      ctx.fillStyle = winner ? C.green : C.fg;
+      ctx.fillRect(barX, y + rowH * 0.28, barW * frac * p, rowH * 0.44);
+      text(ctx, fmt(e.score), x0 + tableW, base, sans(fs), C.dim, "right");
     }
     ctx.globalAlpha = 1;
   });
-  text(ctx, `try it yourself: ${URL_TEXT}`, cx, H - 36, mono(26), C.dim, "center");
+  text(ctx, URL_TEXT, W / 2, H - 40, sans(26), C.faint, "center");
 }
 
 // ---- scenes
@@ -352,6 +342,43 @@ function advanceTo(l: Live, target: number) {
   return ran;
 }
 
+// Plays the sorted -> base shuffle, one frame at a time
+class Shuffler {
+  a: number[];
+  hl: Op | null = null;
+  private done = 0;
+  private plan: Plan;
+
+  constructor(plan: Plan) {
+    this.plan = plan;
+    this.a = plan.sorted.slice();
+  }
+
+  step(local: number, t: number, tones: Tone[]) {
+    const { shuffle, max } = this.plan;
+    const target = Math.round((shuffle.length * (local + 1)) / SHUFFLE);
+    let last: [number, number] | null = null;
+    while (this.done < Math.min(target, shuffle.length)) {
+      last = shuffle[this.done++];
+      const [i, j] = last;
+      [this.a[i], this.a[j]] = [this.a[j], this.a[i]];
+    }
+    this.hl = last ? { t: "swap", i: last[0], j: last[1] } : null;
+    if (last) tones.push({ t, freq: pitch(this.a[last[0]], max), dur: 0.05, vol: 0.7 });
+  }
+}
+
+// Top-left overlay in the style of the old videos, plus the URL top-right
+function overlay(ctx: CanvasRenderingContext2D, plan: Plan, line1: string, line2: string, color = C.fg) {
+  const { width: W, height: H } = plan;
+  const pad = W < H ? 40 : 48;
+  const fs = W < H ? 34 : 38;
+  text(ctx, fit(ctx, line1, sans(fs, 700), W - pad * 2), pad, pad + fs, sans(fs, 700), color);
+  text(ctx, fit(ctx, line2, sans(fs * 0.68), W - pad * 2), pad, pad + fs * 2.05, sans(fs * 0.68), C.dim);
+  if (W >= H) text(ctx, URL_TEXT, W - pad, pad + fs, sans(fs * 0.6), C.faint, "right");
+  return pad + fs * 2.6;
+}
+
 class Tour implements Scene {
   readonly frames: number;
   private plan: Plan;
@@ -362,7 +389,7 @@ class Tour implements Scene {
   private outroStart: number;
   // Steps per frame for runs that never finish
   private dnfRate: number;
-  private cur: { idx: number; l: Live } | null = null;
+  private cur: { idx: number; shuffler: Shuffler; l: Live } | null = null;
 
   constructor(plan: Plan) {
     this.plan = plan;
@@ -370,7 +397,8 @@ class Tour implements Scene {
     this.sortFrames = sec(plan.opts.seconds);
     let f = INTRO;
     this.order.forEach((_, i) => {
-      const len = this.sortFrames + SWEEP + (i === this.order.length - 1 ? WIN_HOLD : HOLD);
+      const hold = i === this.order.length - 1 ? WIN_HOLD : HOLD;
+      const len = SHUFFLE + SETTLE + this.sortFrames + SWEEP + hold;
       this.starts.push(f);
       this.lengths.push(len);
       f += len;
@@ -384,19 +412,35 @@ class Tour implements Scene {
   private segment(f: number) {
     const i = this.starts.findIndex((s, k) => f >= s && f < s + this.lengths[k]);
     if (!this.cur || this.cur.idx !== i) {
-      this.cur = { idx: i, l: live(this.order[i].algo, this.plan.base) };
+      this.cur = {
+        idx: i,
+        shuffler: new Shuffler(this.plan),
+        l: live(this.order[i].algo, this.plan.base),
+      };
     }
-    return { i, e: this.order[i], local: f - this.starts[i], l: this.cur.l };
+    const e = this.order[i];
+    // Negative while shuffling; 0..sortFrames while sorting; past that, sweep and hold
+    const local = f - this.starts[i] - SHUFFLE - SETTLE;
+    return { i, e, local, ...this.cur };
+  }
+
+  private rate(e: Entry) {
+    return e.stats.dnf ? this.dnfRate : e.stats.steps / this.sortFrames;
   }
 
   step(f: number, tones: Tone[]) {
     const t = f / FPS;
     if (f < INTRO) return introTones(f, t, tones);
     if (f >= this.outroStart) return outroTones(this.plan, f - this.outroStart, t, tones);
-    const { i, e, local, l } = this.segment(f);
-    const n = l.arr.n;
+    const { i, e, local, shuffler, l } = this.segment(f);
+    const shuffleLocal = local + SHUFFLE + SETTLE;
+    if (shuffleLocal < SHUFFLE) return shuffler.step(shuffleLocal, t, tones);
+    if (local < 0) {
+      shuffler.hl = null;
+      return;
+    }
     if (local < this.sortFrames) {
-      const rate = e.stats.dnf ? this.dnfRate : e.stats.steps / this.sortFrames;
+      const rate = this.rate(e);
       const target = e.stats.dnf
         ? Math.round(rate * (local + 1))
         : Math.round((e.stats.steps * (local + 1)) / this.sortFrames);
@@ -405,11 +449,12 @@ class Tour implements Scene {
       }
       if (local === this.sortFrames - 1) {
         l.last = null;
-        if (e.stats.dnf) tones.push({ t, freq: 82, dur: 0.6, vol: 1.2, wave: "sawtooth" });
+        if (e.stats.dnf) tones.push({ t, freq: 82, dur: 0.6, vol: 1, wave: "sawtooth" });
       }
       return;
     }
     if (e.stats.dnf) return;
+    const n = l.arr.n;
     const s = local - this.sortFrames;
     if (s < SWEEP) {
       l.sweep = (n * (s + 1)) / SWEEP;
@@ -423,72 +468,41 @@ class Tour implements Scene {
     const { plan } = this;
     if (f < INTRO) return drawIntro(ctx, plan, f);
     if (f >= this.outroStart) return drawOutro(ctx, plan, f - this.outroStart);
-    const { i, e, local, l } = this.segment(f);
+    const { e, local, shuffler, l } = this.segment(f);
     const { width: W, height: H } = plan;
-    background(ctx, plan);
-    const pad = W < H ? 56 : 72;
-    const innerW = W - pad * 2;
+    clear(ctx, plan);
 
-    const rankText = `#${e.rank}`;
-    const rankFont = vt(160);
-    const rankY = pad + 120;
-    glow(ctx, rankColor(e.rank, e.dnf), 30, () => text(ctx, rankText, pad, rankY, rankFont, rankColor(e.rank, e.dnf)));
-    const nameX = pad + measure(ctx, rankText, rankFont) + 36;
-    const nameFont = mono(W < H ? 52 : 64, 600);
-    text(ctx, fit(ctx, e.algo.name, nameFont, W - nameX - pad), nameX, rankY - 52, nameFont, C.fg);
-    const { best, avg, worst } = e.algo;
-    text(ctx, `best ${best} · avg ${avg} · worst ${worst}`, nameX, rankY, mono(28), C.dim);
+    const shuffling = local < 0;
+    const sorting = local >= 0 && local < this.sortFrames;
+    const dnfShown = e.stats.dnf && local >= this.sortFrames;
+    const line1 = `#${e.rank}  ${title(e.algo)}`;
+    const line2 = shuffling
+      ? `avg ${e.algo.avg} · shuffling…`
+      : `${fmt(l.arr.steps)} steps, ${fmt(l.arr.cmps)} comparisons, ${fmt(l.arr.writes)} writes, ${delayLabel(this.rate(e) * FPS)}`;
+    const top = overlay(ctx, plan, line1, line2, e.rank === 1 && !e.dnf && local >= this.sortFrames ? C.green : C.fg);
 
-    let y = rankY + 66;
-    const noteFont = mono(W < H ? 30 : 32);
-    for (const line of wrap(ctx, e.algo.note, noteFont, innerW).slice(0, 3)) {
-      text(ctx, line, pad, y, noteFont, C.fg);
-      y += 44;
+    const barsTop = top + 16;
+    if (shuffling) {
+      drawBars(ctx, shuffler.a, plan.max, 0, barsTop, W, H - barsTop, { hl: shuffler.hl, sweep: -1, dnf: false });
+    } else {
+      drawBars(ctx, l.arr.a, plan.max, 0, barsTop, W, H - barsTop, {
+        hl: sorting ? l.last : null,
+        sweep: l.sweep,
+        dnf: dnfShown,
+      });
     }
 
-    const sorting = local < this.sortFrames;
-    const rate = e.stats.dnf ? this.dnfRate : e.stats.steps / this.sortFrames;
-    const stats: [string, string, string][] = [
-      ["STEPS", fmt(l.arr.steps), C.accent],
-      ["COMPARES", fmt(l.arr.cmps), C.fg],
-      ["WRITES", fmt(l.arr.writes), C.fg],
-      ["PLAYBACK", `${fmt(rate * FPS)}/s`, C.dim],
-    ];
-    const blockW = innerW / stats.length;
-    const valueFont = vt(Math.min(84, blockW / 5.2));
-    y += 16;
-    stats.forEach(([label, value, color], k) => {
-      const x = pad + k * blockW;
-      text(ctx, label, x, y + 20, mono(20), C.dim);
-      text(ctx, value, x, y + 90, valueFont, color);
-    });
-
-    const barsTop = y + 130;
-    const barsBottom = H - pad - 30;
-    drawBars(ctx, l.arr.a, plan.max, pad, barsTop, innerW, barsBottom - barsTop, {
-      hl: sorting ? l.last : null,
-      sweep: l.sweep,
-      dnf: e.stats.dnf && !sorting,
-    });
-
-    if (e.stats.dnf && !sorting) {
-      const cx = W / 2;
-      const cy = (barsTop + barsBottom) / 2;
+    if (dnfShown) {
       const p = easeOut(Math.min(1, (local - this.sortFrames) / 8));
-      ctx.save();
-      ctx.translate(cx, cy);
-      ctx.rotate(-0.12);
-      ctx.scale(2 - p, 2 - p);
+      const cy = (barsTop + H) / 2;
+      const big = W < H ? 220 : 260;
       ctx.globalAlpha = p;
-      ctx.lineWidth = 10;
-      ctx.strokeStyle = C.red;
-      ctx.strokeRect(-260, -150, 520, 260);
-      glow(ctx, C.red, 30, () => text(ctx, "DNF", 0, 50, vt(260), C.red, "center"));
-      text(ctx, `gave up after ${fmt(l.arr.steps)} steps`, 0, 90, mono(26), C.red, "center");
-      ctx.restore();
+      ctx.fillStyle = C.bg;
+      ctx.fillRect(W / 2 - big * 1.4, cy - big * 0.85, big * 2.8, big * 0.85 + 100);
+      text(ctx, "DNF", W / 2, cy, sans(big, 700), C.red, "center");
+      text(ctx, `gave up after ${fmt(l.arr.steps)} steps`, W / 2, cy + 64, sans(34), C.red, "center");
+      ctx.globalAlpha = 1;
     }
-
-    text(ctx, `${i + 1} / ${this.order.length}`, pad, H - 30, mono(22), C.dim);
   }
 }
 
@@ -518,6 +532,8 @@ class Race implements Scene {
   readonly frames: number;
   private plan: Plan;
   private racers: RaceRacer[];
+  private shuffler: Shuffler;
+  private raceStart: number;
   private raceFrames: number;
   private outroStart: number;
   private clock: (t: number) => number;
@@ -531,11 +547,13 @@ class Race implements Scene {
     this.plan = plan;
     const byAlgoOrder = [...plan.entries].sort((a, b) => ALGOS.indexOf(a.algo) - ALGOS.indexOf(b.algo));
     this.racers = byAlgoOrder.map((e) => ({ e, l: live(e.algo, plan.base), status: "running" }));
+    this.shuffler = new Shuffler(plan);
     const finished = plan.entries.filter((e) => !e.stats.dnf).map((e) => e.stats.steps);
     this.sMax = Math.max(...finished);
+    this.raceStart = INTRO + SHUFFLE + SETTLE;
     this.raceFrames = sec(plan.opts.seconds);
     this.clock = makeClock(Math.min(...finished), this.sMax, plan.opts.seconds);
-    this.outroStart = INTRO + this.raceFrames + RACE_HOLD;
+    this.outroStart = this.raceStart + this.raceFrames + RACE_HOLD;
     this.frames = this.outroStart + OUTRO;
   }
 
@@ -543,7 +561,12 @@ class Race implements Scene {
     const t = f / FPS;
     if (f < INTRO) return introTones(f, t, tones);
     if (f >= this.outroStart) return outroTones(this.plan, f - this.outroStart, t, tones);
-    const k = f - INTRO;
+    if (f < INTRO + SHUFFLE) return this.shuffler.step(f - INTRO, t, tones);
+    if (f < this.raceStart) {
+      this.shuffler.hl = null;
+      return;
+    }
+    const k = f - this.raceStart;
     if (k < this.raceFrames) {
       const target = k === this.raceFrames - 1 ? this.sMax : Math.round(this.clock((k + 1) / FPS));
       this.speed = (this.clock((k + 1) / FPS) - this.clock(k / FPS)) * FPS;
@@ -569,7 +592,7 @@ class Race implements Scene {
           if (r.status !== "running") continue;
           r.status = "dnf";
           r.l.last = null;
-          tones.push({ t, freq: 82, dur: 0.6, vol: 1.2, wave: "sawtooth" });
+          tones.push({ t, freq: 82, dur: 0.6, vol: 1, wave: "sawtooth" });
         }
       }
       const count = Math.min(RACE_VOICES, voices.length);
@@ -594,18 +617,18 @@ class Race implements Scene {
     if (f < INTRO) return drawIntro(ctx, plan, f);
     if (f >= this.outroStart) return drawOutro(ctx, plan, f - this.outroStart);
     const { width: W, height: H, opts } = plan;
-    background(ctx, plan);
-    const pad = 40;
-    glow(ctx, C.accent, 24, () => text(ctx, "SORTING.EXE", pad, pad + 64, vt(88), C.accent));
-    text(ctx, `${this.racers.length} algorithms · n = ${opts.n} · ${inputLabel(plan)}`, pad, pad + 104, mono(24), C.dim);
-    text(ctx, `STEP ${fmt(this.now)}`, W - pad, pad + 64, vt(72), C.fg, "right");
-    text(ctx, `${fmt(this.speed)} steps/s`, W - pad, pad + 104, mono(24), C.dim, "right");
+    clear(ctx, plan);
+    const shuffling = f < this.raceStart;
+    const line1 = `${this.racers.length} Sorting Algorithms, Same Array`;
+    const line2 = shuffling
+      ? `n = ${opts.n} · ${inputLabel(plan)} input · shuffling…`
+      : `n = ${opts.n} · ${inputLabel(plan)} input · step ${fmt(this.now)} · ${delayLabel(this.speed)}`;
+    const top = overlay(ctx, plan, line1, line2);
 
-    const gx = pad;
-    const gy = pad + 140;
-    const gw = W - pad * 2;
-    const gh = H - gy - pad - 24;
-    const gap = 14;
+    const gw = W;
+    const gy = top + 8;
+    const gh = H - gy;
+    const gap = 4;
     const count = this.racers.length;
     let best = { cols: 1, score: -1 };
     for (let cols = 1; cols <= count; cols++) {
@@ -620,32 +643,30 @@ class Race implements Scene {
     const rows = Math.ceil(count / cols);
     const pw = (gw - gap * (cols - 1)) / cols;
     const ph = (gh - gap * (rows - 1)) / rows;
-    const hh = Math.max(26, Math.min(44, ph * 0.17));
-    const fs = hh * 0.6;
+    const hh = Math.max(24, Math.min(40, ph * 0.16));
+    const fs = hh * 0.62;
 
+    ctx.fillStyle = C.line;
+    ctx.fillRect(0, gy, W, gh);
     this.racers.forEach((r, idx) => {
-      const x = gx + (idx % cols) * (pw + gap);
+      const x = (idx % cols) * (pw + gap);
       const y = gy + Math.floor(idx / cols) * (ph + gap);
-      const done = r.status === "done";
-      const first = done && r.e.stats.steps === Math.min(...this.racers.filter((o) => o.status === "done").map((o) => o.e.stats.steps));
-      panel(ctx, x, y, pw, ph, first ? C.gold : C.line);
-      let nx = x + 12;
-      const base = y + hh * 0.78;
-      if (r.status !== "running") {
-        const label = r.status === "dnf" ? "DNF" : `#${this.liveRank(r)}`;
-        const font = vt(hh * 1.05);
-        text(ctx, label, nx, base + 2, font, rankColor(this.liveRank(r), r.status === "dnf"));
-        nx += measure(ctx, label, font) + 10;
-      }
+      ctx.fillStyle = C.bg;
+      ctx.fillRect(x, y, pw, ph);
+      const rank = this.liveRank(r);
+      const label =
+        r.status === "dnf" ? "DNF  " : r.status === "done" ? `#${rank}  ` : "";
+      const color = r.status === "dnf" ? C.red : r.status === "done" && rank === 1 ? C.green : C.fg;
       const steps = fmt(r.l.arr.steps);
-      const stepsW = measure(ctx, steps, mono(fs * 0.9));
-      text(ctx, steps, x + pw - 12, base, mono(fs * 0.9), C.dim, "right");
-      const nameFont = mono(fs, 600);
-      const name = r.e.algo.short ?? r.e.algo.name;
-      text(ctx, fit(ctx, name, nameFont, x + pw - 24 - stepsW - nx), nx, base, nameFont, C.fg);
-      drawBars(ctx, r.l.arr.a, plan.max, x + 10, y + hh + 4, pw - 20, ph - hh - 14, {
-        hl: r.status === "running" ? r.l.last : null,
-        sweep: r.l.sweep,
+      const stepsW = measure(ctx, steps, sans(fs * 0.9));
+      const base = y + hh * 0.75;
+      const name = `${label}${r.e.algo.short ?? r.e.algo.name}`;
+      text(ctx, fit(ctx, name, sans(fs, 700), pw - 28 - stepsW), x + 10, base, sans(fs, 700), color);
+      text(ctx, steps, x + pw - 10, base, sans(fs * 0.9), C.dim, "right");
+      const a = shuffling ? this.shuffler.a : r.l.arr.a;
+      drawBars(ctx, a, plan.max, x, y + hh + 2, pw, ph - hh - 2, {
+        hl: shuffling ? this.shuffler.hl : r.status === "running" ? r.l.last : null,
+        sweep: shuffling ? -1 : r.l.sweep,
         dnf: r.status === "dnf",
       });
     });

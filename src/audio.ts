@@ -28,15 +28,15 @@ export function setWave(w: OscillatorType) {
 // The classic mapping from those old visualizer videos
 export const pitch = (value: number, max: number) => 120 + 1100 * (value / max);
 
-export function tone(freq: number, dur = 0.08, vol = 1, delay = 0) {
+export function tone(freq: number, dur = 0.08, vol = 1, delay = 0, type: OscillatorType = wave) {
   if (!ctx || !master || ctx.state !== "running") return;
   const t = ctx.currentTime + delay;
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
-  osc.type = wave;
+  osc.type = type;
   osc.frequency.setValueAtTime(freq, t);
   gain.gain.setValueAtTime(0, t);
-  gain.gain.linearRampToValueAtTime(vol * WAVE_GAIN[wave], t + 0.004);
+  gain.gain.linearRampToValueAtTime(vol * WAVE_GAIN[type], t + 0.004);
   gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   osc.connect(gain).connect(master);
   osc.start(t);

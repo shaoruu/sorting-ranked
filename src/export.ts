@@ -21,14 +21,6 @@ export type Progress = { phase: string; fraction: number };
 
 const AUDIO_BITRATE = 192_000;
 
-async function loadFonts() {
-  await Promise.all(
-    ['80px VT323', '400 30px "IBM Plex Mono"', '600 30px "IBM Plex Mono"'].map((f) =>
-      document.fonts.load(f)
-    )
-  );
-}
-
 // Renders offline, frame by frame, so nothing drops no matter how slow the machine is
 export async function renderVideo(
   opts: VideoOpts,
@@ -36,7 +28,6 @@ export async function renderVideo(
   onProgress: (p: Progress) => void,
   isCancelled: () => boolean
 ) {
-  await loadFonts();
   onProgress({ phase: opts.rankBy === "overall" ? "benchmarking" : "planning", fraction: 0 });
   const plan = await makePlan(opts);
   canvas.width = plan.width;

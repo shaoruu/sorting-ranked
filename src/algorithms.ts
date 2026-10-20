@@ -17,6 +17,10 @@ export type Algo = {
   run: (a: Arr) => Sorter;
 };
 
+// "Quick (Hoare)" -> "Quick Sort (Hoare)", the way the old videos label them
+export const title = (algo: Algo) =>
+  algo.name.includes(" (") ? algo.name.replace(" (", " Sort (") : `${algo.name} Sort`;
+
 function* bubble(a: Arr): Sorter {
   for (let end = a.n - 1; end > 0; end--) {
     let swapped = false;

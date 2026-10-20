@@ -346,9 +346,11 @@ async function showOverall() {
   }
 }
 
+// Grayscale heat: best is near-white, worst near-black
 function rankColor(rank: number, total: number) {
   const t = (rank - 1) / Math.max(1, total - 1);
-  return `hsl(${Math.round(140 - 140 * t)} 70% ${Math.round(58 - 8 * t)}%)`;
+  const light = Math.round(92 - 72 * t);
+  return `background:hsl(0 0% ${light}%);color:${light > 50 ? "#000" : "#fff"}`;
 }
 
 function renderOverall(rows: BenchRow[], n: number) {
@@ -360,11 +362,11 @@ function renderOverall(rows: BenchRow[], n: number) {
     const cells = INPUTS.map((input) => {
       const steps = row.steps[input.id];
       const label = Number.isFinite(steps) ? row.ranks[input.id] : "∞";
-      const bg = Number.isFinite(steps)
+      const style = Number.isFinite(steps)
         ? rankColor(row.ranks[input.id], rows.length)
-        : "#4a3434";
+        : "background:#3a0000;color:#ff4d4d";
       const title = Number.isFinite(steps) ? `${fmt(steps)} steps` : "gave up";
-      return `<td class="cell" style="background:${bg}" title="${title}">${label}</td>`;
+      return `<td class="cell" style="${style}" title="${title}">${label}</td>`;
     }).join("");
     const score = Number.isFinite(row.score) ? fmt(row.score) : "∞";
     const cls = i < 3 ? `r${i + 1}` : "";
@@ -528,7 +530,6 @@ function bindControls() {
 
   const videoDialog = initVideoDialog(
     () => ({
-      n: settings.n,
       input: settings.input,
       wave: settings.wave,
       memes: settings.memes,

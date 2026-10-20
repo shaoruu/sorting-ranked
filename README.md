@@ -18,8 +18,9 @@ Click a panel to listen to it. Each step plays a tone pitched by the value being
 
 `● export video` renders an MP4 offline, frame by frame, with WebCodecs ([mediabunny](https://mediabunny.dev)), so nothing drops and the audio is sample-accurate. Output is H.264 High + AAC-LC at 60fps, which X/Twitter takes as-is.
 
-- **tour**: one algorithm at a time, counting down from worst to best, each given the same screen time (the playback rate shows how much faster the slow ones are sped up)
-- **race**: everything at once on an exponential clock, so the n log n sorts finish visibly early and stooge still finishes before the end
+- **fullscreen**: the classic [Sound of Sorting](https://panthema.net/2013/sound-of-sorting/) format. One algorithm at a time, white bars edge to edge, a visible shuffle before each sort and a green verification sweep after, counting down from worst to best. Each gets the same screen time; the "ms delay" readout shows how much the slow ones are sped up
+- **grid**: everything at once on an exponential clock, so the n log n sorts finish visibly early and stooge still finishes before the end
+- **preview** plays the exact video live in the browser (with fullscreen) before you render
 - 16:9, 1:1, or 9:16; ranked by steps on the shown input or by the overall benchmark
 - ends on an animated final ranking card
 

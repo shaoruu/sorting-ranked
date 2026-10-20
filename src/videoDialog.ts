@@ -1,21 +1,28 @@
+import * as audio from "./audio.ts";
 import { INPUTS, type InputKind } from "./inputs.ts";
 import {
+  createScene,
   estimateSeconds,
+  FPS,
+  makePlan,
   type Aspect,
   type RankBy,
+  type Tone,
   type VideoMode,
   type VideoOpts,
 } from "./video.ts";
 
 // X's limit for accounts without Premium
 const X_LIMIT = 140;
+const STORE_KEY = "video-v2";
 
-type Shared = { n: number; input: InputKind; wave: OscillatorType; memes: boolean };
+type Shared = { input: InputKind; wave: OscillatorType; memes: boolean };
 
 type Saved = {
   mode: VideoMode;
   aspect: Aspect;
   rankBy: RankBy;
+  n: number;
   tourSeconds: number;
   raceSeconds: number;
 };
@@ -24,7 +31,8 @@ const DEFAULTS: Saved = {
   mode: "tour",
   aspect: "16:9",
   rankBy: "input",
-  tourSeconds: 4,
+  n: 128,
+  tourSeconds: 3.5,
   raceSeconds: 40,
 };
 
@@ -37,11 +45,13 @@ export function initVideoDialog(shared: () => Shared, onOpen: () => void) {
   const dialog = $<HTMLDialogElement>("#video-dialog");
   const mode = $<HTMLSelectElement>("#video-mode");
   const aspect = $<HTMLSelectElement>("#video-aspect");
+  const size = $<HTMLSelectElement>("#video-n");
   const rank = $<HTMLSelectElement>("#video-rank");
   const seconds = $<HTMLInputElement>("#video-seconds");
   const secondsLabel = $("#video-seconds-label");
   const summary = $("#video-summary");
   const duration = $("#video-duration");
+  const previewBtn = $<HTMLButtonElement>("#video-preview");
   const renderBtn = $<HTMLButtonElement>("#video-render");
   const cancelBtn = $<HTMLButtonElement>("#video-cancel");
   const progress = $("#video-progress");
@@ -53,19 +63,22 @@ export function initVideoDialog(shared: () => Shared, onOpen: () => void) {
 
   let saved: Saved = { ...DEFAULTS };
   try {
-    saved = { ...DEFAULTS, ...JSON.parse(localStorage.getItem("video") ?? "{}") };
+    saved = { ...DEFAULTS, ...JSON.parse(localStorage.getItem(STORE_KEY) ?? "{}") };
   } catch {}
   mode.value = saved.mode;
   aspect.value = saved.aspect;
+  size.value = String(saved.n);
   rank.value = saved.rankBy;
 
   let rendering = false;
   let cancelled = false;
+  let previewRaf = 0;
   let url: string | null = null;
   let caption = "";
 
   const opts = (): VideoOpts => ({
     ...shared(),
+    n: saved.n,
     mode: saved.mode,
     aspect: saved.aspect,
     rankBy: saved.rankBy,
@@ -78,17 +91,16 @@ export function initVideoDialog(shared: () => Shared, onOpen: () => void) {
     seconds.value = String(saved.mode === "tour" ? saved.tourSeconds : saved.raceSeconds);
     const o = opts();
     const input = INPUTS.find((i) => i.id === o.input)!.label;
-    summary.textContent = `from the main controls: n = ${o.n} · ${input} · ${o.wave} wave · ${o.memes ? "with" : "without"} bogo + stooge`;
+    summary.textContent = `from the main controls: ${input} input · ${o.wave} wave · ${o.memes ? "with" : "without"} bogo + stooge`;
     const s = estimateSeconds(o);
     duration.textContent = `≈ ${clock(s)} at 60fps, H.264 + AAC`;
     duration.classList.toggle("warn", s > X_LIMIT);
     if (s > X_LIMIT) duration.textContent += ` · over X's 2:20 limit without Premium`;
-    canvas.classList.toggle("tall", saved.aspect === "9:16");
-    result.classList.toggle("tall", saved.aspect === "9:16");
   }
 
   function persist() {
-    localStorage.setItem("video", JSON.stringify(saved));
+    localStorage.setItem(STORE_KEY, JSON.stringify(saved));
+    stopPreview();
     sync();
   }
 
@@ -98,6 +110,10 @@ export function initVideoDialog(shared: () => Shared, onOpen: () => void) {
   };
   aspect.onchange = () => {
     saved.aspect = aspect.value as Aspect;
+    persist();
+  };
+  size.onchange = () => {
+    saved.n = Number(size.value);
     persist();
   };
   rank.onchange = () => {
@@ -111,6 +127,52 @@ export function initVideoDialog(shared: () => Shared, onOpen: () => void) {
     persist();
   };
 
+  function showCanvas() {
+    result.pause();
+    result.hidden = true;
+    canvas.hidden = false;
+  }
+
+  function stopPreview() {
+    if (!previewRaf) return;
+    cancelAnimationFrame(previewRaf);
+    previewRaf = 0;
+    previewBtn.textContent = "▶ preview";
+  }
+
+  // Plays the exact scene the render would encode, in real time with live audio
+  async function preview() {
+    if (previewRaf) return stopPreview();
+    audio.unlock();
+    showCanvas();
+    status.textContent = "planning…";
+    const plan = await makePlan(opts());
+    status.textContent = "";
+    canvas.width = plan.width;
+    canvas.height = plan.height;
+    const ctx = canvas.getContext("2d")!;
+    const scene = createScene(plan);
+    const tones: Tone[] = [];
+    const start = performance.now();
+    let f = 0;
+    previewBtn.textContent = "■ stop";
+    const tick = () => {
+      const elapsed = (performance.now() - start) / 1000;
+      const due = Math.min(scene.frames - 1, Math.floor(elapsed * FPS));
+      while (f <= due) {
+        tones.length = 0;
+        scene.step(f, tones);
+        for (const t of tones) audio.tone(t.freq, t.dur, t.vol, Math.max(0, t.t - elapsed), t.wave);
+        f++;
+      }
+      scene.draw(ctx, f - 1);
+      progress.style.width = `${(f / scene.frames) * 100}%`;
+      if (f < scene.frames) previewRaf = requestAnimationFrame(tick);
+      else stopPreview();
+    };
+    previewRaf = requestAnimationFrame(tick);
+  }
+
   $("#video-open").onclick = () => {
     onOpen();
     sync();
@@ -118,7 +180,13 @@ export function initVideoDialog(shared: () => Shared, onOpen: () => void) {
   };
   $("#video-close").onclick = () => {
     if (rendering) cancelled = true;
+    stopPreview();
     dialog.close();
+  };
+  previewBtn.onclick = () => void preview();
+  $("#video-fullscreen").onclick = () => {
+    if (!previewRaf) void preview();
+    void (result.hidden ? canvas : result).requestFullscreen();
   };
   cancelBtn.onclick = () => {
     cancelled = true;
@@ -130,13 +198,14 @@ export function initVideoDialog(shared: () => Shared, onOpen: () => void) {
 
   renderBtn.onclick = async () => {
     if (rendering) return;
+    stopPreview();
     rendering = true;
     cancelled = false;
     renderBtn.disabled = true;
+    previewBtn.disabled = true;
     cancelBtn.hidden = false;
     done.hidden = true;
-    result.hidden = true;
-    canvas.hidden = false;
+    showCanvas();
     progress.style.width = "0%";
     const o = opts();
     const started = performance.now();
@@ -161,7 +230,7 @@ export function initVideoDialog(shared: () => Shared, onOpen: () => void) {
       result.hidden = false;
       canvas.hidden = true;
       download.href = url;
-      download.download = `sorting-ranked-${o.mode}-n${o.n}-${o.input}-${o.aspect.replace(":", "x")}.mp4`;
+      download.download = `sorting-${o.mode === "tour" ? "fullscreen" : "grid"}-n${o.n}-${o.input}-${o.aspect.replace(":", "x")}.mp4`;
       done.hidden = false;
       const mb = (out.blob.size / 1e6).toFixed(1);
       const took = ((performance.now() - started) / 1000).toFixed(0);
@@ -177,6 +246,7 @@ export function initVideoDialog(shared: () => Shared, onOpen: () => void) {
     } finally {
       rendering = false;
       renderBtn.disabled = false;
+      previewBtn.disabled = false;
       cancelBtn.hidden = true;
     }
   };
