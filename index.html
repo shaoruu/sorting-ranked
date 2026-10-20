@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SORTING.EXE: sorting algorithms, ranked</title>
+    <meta
+      name="description"
+      content="21 sorting algorithms race on the same array, with sound. Ranked by steps."
+    />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=VT323&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <header>
+      <div class="title">
+        <h1>SORTING.EXE<span class="cursor">_</span></h1>
+        <p>21 sorting algorithms, same array, same clock. turn your sound on.</p>
+      </div>
+      <div class="controls">
+        <button id="play" class="primary">▶ start</button>
+        <button id="reset">↻ new race</button>
+        <button id="skip">» finish</button>
+        <label>n <select id="size"></select></label>
+        <label>input <select id="input"></select></label>
+        <label class="speed">
+          speed <input id="speed" type="range" min="0" max="1000" />
+          <output id="speed-out"></output>
+        </label>
+        <label>
+          sound
+          <select id="sound">
+            <option value="solo">solo</option>
+            <option value="all">all</option>
+            <option value="off">off</option>
+          </select>
+        </label>
+        <label>
+          wave
+          <select id="wave">
+            <option value="sine">sine</option>
+            <option value="triangle">triangle</option>
+            <option value="square">square</option>
+            <option value="sawtooth">saw</option>
+          </select>
+        </label>
+        <label class="check"><input id="memes" type="checkbox" /> bogo + stooge</label>
+      </div>
+    </header>
+    <main>
+      <section id="grid"></section>
+      <aside>
+        <div class="tabs">
+          <button data-tab="race" class="active">this race</button>
+          <button data-tab="overall">overall</button>
+        </div>
+        <div id="race-board"></div>
+        <div id="overall-board" hidden></div>
+        <p class="rules">
+          Every compare, swap, write, or buffer read costs one step. Everyone gets the
+          same steps per frame, so finish order is the ranking. Holding one value (a
+          key, a pivot) is free.
+        </p>
+        <div id="note"></div>
+      </aside>
+    </main>
+    <footer>
+      <span><kbd>click</kbd> listen</span>
+      <span><kbd>dbl-click</kbd> zoom</span>
+      <span><kbd>space</kbd> start/pause</span>
+      <span><kbd>r</kbd> new race</span>
+      <span><kbd>f</kbd> finish</span>
+      <span><kbd>esc</kbd> unzoom</span>
+      <a href="https://github.com/shaoruu/sorting-ranked" target="_blank" rel="noreferrer"
+        >source</a
+      >
+    </footer>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
