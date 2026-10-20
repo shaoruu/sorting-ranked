@@ -22,9 +22,11 @@
 
 body {
   margin: 0;
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 header {
@@ -113,17 +115,26 @@ main {
   min-height: 0;
 }
 
+/* --cols and --rows come from layoutGrid(); flex-grow stretches a short last row to the full width */
 #grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
-  align-content: start;
-  gap: 1px;
-  padding: 1px;
+  --cols: 7;
+  --rows: 3;
+  --gap: 1px;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: stretch;
+  gap: var(--gap);
+  min-height: 0;
+  overflow: hidden;
   border-right: 1px solid var(--line);
 }
 
 .panel {
+  flex: 1 0 calc((100% - (var(--cols) - 1) * var(--gap)) / var(--cols) - 0.5px);
+  height: calc((100% - (var(--rows) - 1) * var(--gap)) / var(--rows) - 0.5px);
   min-width: 0;
+  display: flex;
+  flex-direction: column;
   background: var(--bg);
   padding: 8px 0 0;
   cursor: pointer;
@@ -195,24 +206,22 @@ main {
 
 .panel canvas {
   display: block;
+  flex: 1;
   width: 100%;
-  height: 120px;
-}
-
-body.zoomed #grid {
-  grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
 }
 
 body.zoomed .panel:not(.zoomed) {
   display: none;
 }
 
-body.zoomed .panel.zoomed canvas {
-  height: calc(100vh - 190px);
-  min-height: 240px;
+body.zoomed .panel.zoomed {
+  flex-basis: 100%;
+  height: 100%;
 }
 
 aside {
+  min-height: 0;
   padding: 12px 16px;
   overflow-y: auto;
 }
@@ -249,7 +258,7 @@ th {
 
 td {
   text-align: right;
-  padding: 4px;
+  padding: 3px 4px;
   border-bottom: 1px solid var(--line);
   white-space: nowrap;
 }
@@ -462,14 +471,27 @@ button:disabled {
   max-height: none;
 }
 
+/* Phones: too small to fit everything, so go back to a scrolling page */
 @media (max-width: 900px) {
+  body {
+    height: auto;
+    overflow: visible;
+  }
+
   main {
     grid-template-columns: minmax(0, 1fr);
   }
 
   #grid {
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
     border-right: 0;
+  }
+
+  .panel {
+    height: 150px;
+  }
+
+  body.zoomed .panel.zoomed {
+    height: 70vh;
   }
 
   .video-body {

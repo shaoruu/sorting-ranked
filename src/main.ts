@@ -154,6 +154,41 @@ function createRacer(algo: Algo, data: number[]): Racer {
   return r;
 }
 
+const GRID_GAP = 1;
+const narrow = window.matchMedia("(max-width: 900px)");
+
+// Picks the column count that gives the biggest, not-too-skinny panels for the space. Uneven last rows
+// stretch in CSS but still look lopsided, so empty slots cost a lot.
+function layoutGrid() {
+  const count = racers.length;
+  if (!count) return;
+  let best = { cols: 1, score: -Infinity };
+  if (narrow.matches) {
+    // The page scrolls here, so height isn't a constraint; just keep the last row as full as possible
+    for (const cols of [3, 4, 2]) {
+      const empty = Math.ceil(count / cols) * cols - count;
+      if (-empty > best.score) best = { cols, score: -empty };
+    }
+  } else {
+    const w = grid.clientWidth;
+    const h = grid.clientHeight;
+    if (!w || !h) return;
+    for (let cols = 1; cols <= count; cols++) {
+      const rows = Math.ceil(count / cols);
+      const pw = (w - GRID_GAP * (cols - 1)) / cols;
+      const ph = (h - GRID_GAP * (rows - 1)) / rows;
+      const aspect = pw / ph;
+      const empty = cols * rows - count;
+      const score = pw * ph * Math.min(1, aspect / 0.9, 2.4 / aspect) * (1 - (0.6 * empty) / cols);
+      if (score > best.score) best = { cols, score };
+    }
+  }
+  grid.style.setProperty("--cols", String(best.cols));
+  grid.style.setProperty("--rows", String(Math.ceil(count / best.cols)));
+}
+
+new ResizeObserver(layoutGrid).observe(grid);
+
 function newRace() {
   running = false;
   fastForward = false;
@@ -169,6 +204,7 @@ function newRace() {
   if (!racers.some((r) => r.algo.id === settings.solo)) settings.solo = racers[0].algo.id;
   zoomed = null;
   document.body.classList.remove("zoomed");
+  layoutGrid();
   buildBoard();
   setSolo(racers.find((r) => r.algo.id === settings.solo)!);
   syncPlay();
@@ -297,9 +333,9 @@ function buildBoard() {
   raceBoard.innerHTML = `<table><thead><tr><th>#</th><th>algorithm</th><th>steps</th><th>cmp</th><th>writes</th></tr></thead><tbody></tbody></table>`;
   const tbody = raceBoard.querySelector("tbody")!;
   for (const r of racers) {
-    r.row.innerHTML = `<td class="rank"></td><td><div></div><div class="big-o"></div></td><td></td><td></td><td></td>`;
+    r.row.innerHTML = `<td class="rank"></td><td><span></span> <span class="big-o"></span></td><td></td><td></td><td></td>`;
     r.row.cells[1].children[0].textContent = r.algo.name;
-    r.row.cells[1].children[1].textContent = `avg ${r.algo.avg}`;
+    r.row.cells[1].children[1].textContent = r.algo.avg;
     tbody.append(r.row);
   }
   renderBoard();
@@ -370,9 +406,8 @@ function renderOverall(rows: BenchRow[], n: number) {
     }).join("");
     const score = Number.isFinite(row.score) ? fmt(row.score) : "∞";
     const cls = i < 3 ? `r${i + 1}` : "";
-    tr.innerHTML = `<td class="rank ${cls}">${i + 1}</td><td><div></div><div class="big-o"></div></td>${cells}<td>${score}</td>`;
-    tr.cells[1].children[0].textContent = row.algo.name;
-    tr.cells[1].children[1].textContent = `avg ${row.algo.avg}`;
+    tr.innerHTML = `<td class="rank ${cls}">${i + 1}</td><td></td>${cells}<td>${score}</td>`;
+    tr.cells[1].textContent = row.algo.name;
     tr.title = row.algo.note;
     const racer = racers.find((r) => r.algo === row.algo);
     if (racer) tr.addEventListener("click", () => racer.row.click());
