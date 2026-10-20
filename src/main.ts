@@ -1,3 +1,4 @@
+import { inject, track } from "@vercel/analytics";
 import "./style.css";
 import { ALGOS, type Algo } from "./algorithms.ts";
 import { Arr, type Op, type Sorter } from "./arr.ts";
@@ -437,12 +438,14 @@ function syncPlay() {
 
 function togglePlay() {
   audio.unlock();
+  const fresh = raceOver() || !started();
   if (raceOver()) {
     newRace();
     running = true;
   } else {
     running = !running;
   }
+  if (fresh) track("race_start", { n: settings.n, input: settings.input });
   syncPlay();
 }
 
@@ -598,6 +601,7 @@ function bindControls() {
   });
 }
 
+inject();
 bindControls();
 newRace();
 requestAnimationFrame(frame);

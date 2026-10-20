@@ -1,3 +1,4 @@
+import { track } from "@vercel/analytics";
 import * as audio from "./audio.ts";
 import { INPUTS, type InputKind } from "./inputs.ts";
 import {
@@ -146,7 +147,9 @@ export function initVideoDialog(shared: () => Shared, onOpen: () => void) {
     audio.unlock();
     showCanvas();
     status.textContent = "planning…";
-    const plan = await makePlan(opts());
+    const o = opts();
+    track("video_preview", { mode: o.mode, aspect: o.aspect, n: o.n });
+    const plan = await makePlan(o);
     status.textContent = "";
     canvas.width = plan.width;
     canvas.height = plan.height;
@@ -240,6 +243,14 @@ export function initVideoDialog(shared: () => Shared, onOpen: () => void) {
           " · no AAC encoder here, audio is Opus. X wants AAC: ffmpeg -i in.mp4 -c:v copy -c:a aac out.mp4";
       }
       caption = makeCaption(o);
+      track("video_export", {
+        mode: o.mode,
+        aspect: o.aspect,
+        n: o.n,
+        input: o.input,
+        rankBy: o.rankBy,
+        seconds: Math.round(out.seconds),
+      });
     } catch (err) {
       console.error(err);
       status.textContent = `failed: ${err instanceof Error ? err.message : String(err)}`;
