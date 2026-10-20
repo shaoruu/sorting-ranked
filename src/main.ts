@@ -2,8 +2,10 @@ import "./style.css";
 import { ALGOS, type Algo } from "./algorithms.ts";
 import { Arr, type Op, type Sorter } from "./arr.ts";
 import * as audio from "./audio.ts";
+import { drawBars } from "./bars.ts";
 import { benchmark, type BenchRow } from "./benchmark.ts";
 import { INPUTS, makeInput, mulberry32, type InputKind } from "./inputs.ts";
+import { initVideoDialog } from "./videoDialog.ts";
 
 const SIZES = [16, 32, 64, 128, 256];
 const SPEED_MIN = 5;
@@ -46,18 +48,6 @@ function loadSettings(): Settings {
 
 const settings = loadSettings();
 const save = () => localStorage.setItem("settings", JSON.stringify(settings));
-
-const COLORS = {
-  bg: "#0f130f",
-  bar: "#cfe8cf",
-  done: "#3ddc84",
-  sweep: "#ffffff",
-  dnf: "#4a3434",
-  cmp: "#ff4d4d",
-  swap: "#ffd23f",
-  write: "#ffd23f",
-  read: "#4da3ff",
-} as const;
 
 type Status = "running" | "done" | "dnf";
 
@@ -286,29 +276,11 @@ function sound() {
 function draw(r: Racer) {
   r.dirty = false;
   const { ctx, canvas, arr } = r;
-  const w = canvas.width;
-  const h = canvas.height;
-  ctx.fillStyle = COLORS.bg;
-  ctx.fillRect(0, 0, w, h);
-  const n = arr.n;
-  const bw = w / n;
-  const gap = bw >= 4 ? Math.max(1, Math.floor(bw * 0.18)) : 0;
-  const hl = r.status === "running" ? r.last : null;
-  const hj = hl && "j" in hl ? hl.j : -1;
-  const sweepAt = Math.ceil(r.sweep) - 1;
-  for (let i = 0; i < n; i++) {
-    let color: string = COLORS.bar;
-    if (r.status === "dnf") color = COLORS.dnf;
-    else if (r.sweep >= n) color = COLORS.done;
-    else if (i === sweepAt) color = COLORS.sweep;
-    else if (i < r.sweep) color = COLORS.done;
-    if (hl && (i === hl.i || i === hj)) color = COLORS[hl.t];
-    const bh = Math.max(1, Math.round((arr.a[i] / r.max) * h));
-    const x = Math.round(i * bw);
-    const x2 = Math.round((i + 1) * bw) - gap;
-    ctx.fillStyle = color;
-    ctx.fillRect(x, h - bh, Math.max(1, x2 - x), bh);
-  }
+  drawBars(ctx, arr.a, r.max, 0, 0, canvas.width, canvas.height, {
+    hl: r.status === "running" ? r.last : null,
+    sweep: r.sweep,
+    dnf: r.status === "dnf",
+  });
   r.stepsEl.textContent = fmt(arr.steps);
   const rank = rankLabel(r);
   r.rankEl.textContent = rank.text;
@@ -554,8 +526,22 @@ function bindControls() {
     if (e.target instanceof HTMLButtonElement) e.target.blur();
   });
 
+  const videoDialog = initVideoDialog(
+    () => ({
+      n: settings.n,
+      input: settings.input,
+      wave: settings.wave,
+      memes: settings.memes,
+    }),
+    () => {
+      running = false;
+      syncPlay();
+    }
+  );
+
   document.addEventListener("keydown", (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (videoDialog.isOpen()) return;
     if (e.target instanceof HTMLSelectElement) return;
     switch (e.key) {
       case " ":

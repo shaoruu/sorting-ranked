@@ -1,8 +1,11 @@
 import type { Arr, Sorter, Step } from "./arr.ts";
+import { mulberry32 } from "./inputs.ts";
 
 export type Algo = {
   id: string;
   name: string;
+  // For small race panels in the video
+  short?: string;
   best: string;
   avg: string;
   worst: string;
@@ -344,7 +347,9 @@ function* stooge(a: Arr, i: number, j: number): Sorter {
   }
 }
 
+// Seeded so a run is reproducible: video export simulates every run twice and both must match
 function* bogo(a: Arr): Sorter {
+  const rand = mulberry32(0xb090);
   while (true) {
     let sorted = true;
     for (let i = 1; i < a.n; i++) {
@@ -355,7 +360,7 @@ function* bogo(a: Arr): Sorter {
     }
     if (sorted) return;
     for (let i = a.n - 1; i > 0; i--) {
-      yield* a.swap(i, Math.floor(Math.random() * (i + 1)));
+      yield* a.swap(i, Math.floor(rand() * (i + 1)));
     }
   }
 }
@@ -373,6 +378,7 @@ export const ALGOS: Algo[] = [
   {
     id: "cocktail",
     name: "Cocktail Shaker",
+    short: "Cocktail",
     best: "n",
     avg: "n²",
     worst: "n²",
@@ -427,6 +433,7 @@ export const ALGOS: Algo[] = [
   {
     id: "binary-insertion",
     name: "Binary Insertion",
+    short: "Bin. Insertion",
     best: "n log n",
     avg: "n²",
     worst: "n²",
@@ -454,6 +461,7 @@ export const ALGOS: Algo[] = [
   {
     id: "tim",
     name: "Tim (simplified)",
+    short: "Tim",
     best: "n",
     avg: "n log n",
     worst: "n log n",
@@ -463,6 +471,7 @@ export const ALGOS: Algo[] = [
   {
     id: "quick-hoare",
     name: "Quick (Hoare)",
+    short: "Quick Hoare",
     best: "n log n",
     avg: "n log n",
     worst: "n²",
@@ -472,6 +481,7 @@ export const ALGOS: Algo[] = [
   {
     id: "quick-lomuto",
     name: "Quick (Lomuto)",
+    short: "Quick Lomuto",
     best: "n log n",
     avg: "n log n",
     worst: "n²",
@@ -490,6 +500,7 @@ export const ALGOS: Algo[] = [
   {
     id: "radix-lsd",
     name: "Radix LSD (base 4)",
+    short: "Radix LSD",
     best: "nk",
     avg: "nk",
     worst: "nk",
@@ -499,6 +510,7 @@ export const ALGOS: Algo[] = [
   {
     id: "radix-msd",
     name: "Radix MSD (base 4)",
+    short: "Radix MSD",
     best: "nk",
     avg: "nk",
     worst: "nk",

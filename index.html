@@ -50,8 +50,61 @@
           </select>
         </label>
         <label class="check"><input id="memes" type="checkbox" /> bogo + stooge</label>
+        <button id="video-open">● export video</button>
       </div>
     </header>
+    <dialog id="video-dialog">
+      <div class="dialog-head">
+        <h2>EXPORT VIDEO</h2>
+        <button id="video-close" aria-label="close">✕</button>
+      </div>
+      <div class="video-body">
+        <div class="video-opts">
+          <label>
+            format
+            <select id="video-mode">
+              <option value="tour">tour: one at a time, worst → best</option>
+              <option value="race">race: all at once, time-lapse clock</option>
+            </select>
+          </label>
+          <label>
+            aspect
+            <select id="video-aspect">
+              <option value="16:9">16:9 · 1920×1080</option>
+              <option value="1:1">1:1 · 1080×1080</option>
+              <option value="9:16">9:16 · 1080×1920</option>
+            </select>
+          </label>
+          <label>
+            rank by
+            <select id="video-rank">
+              <option value="input">steps on this input</option>
+              <option value="overall">overall (all 5 inputs)</option>
+            </select>
+          </label>
+          <label>
+            <span id="video-seconds-label">seconds each</span>
+            <input id="video-seconds" type="number" min="1" max="120" step="0.5" />
+          </label>
+          <p id="video-summary" class="meta"></p>
+          <p id="video-duration"></p>
+          <div class="video-actions">
+            <button id="video-render" class="primary">render mp4</button>
+            <button id="video-cancel" hidden>cancel</button>
+          </div>
+          <div class="progress"><div id="video-progress"></div></div>
+          <p id="video-status" class="meta"></p>
+          <div id="video-done" hidden>
+            <a id="video-download" class="button primary" download>⬇ download mp4</a>
+            <button id="video-caption">copy caption</button>
+          </div>
+        </div>
+        <div class="video-stage">
+          <canvas id="video-canvas" width="1920" height="1080"></canvas>
+          <video id="video-result" controls playsinline hidden></video>
+        </div>
+      </div>
+    </dialog>
     <main>
       <section id="grid"></section>
       <aside>

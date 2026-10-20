@@ -3,7 +3,7 @@ let master: GainNode | null = null;
 let wave: OscillatorType = "triangle";
 
 // Square and saw carry far more energy than sine at the same gain
-const WAVE_GAIN: Record<string, number> = {
+export const WAVE_GAIN: Record<string, number> = {
   sine: 1,
   triangle: 0.9,
   square: 0.35,
@@ -43,8 +43,14 @@ export function tone(freq: number, dur = 0.08, vol = 1, delay = 0) {
   osc.stop(t + dur + 0.02);
 }
 
+// [delay, freq, dur] for a little C major arpeggio
+export const FANFARE: [number, number, number][] = [
+  [0, 523.25, 0.16],
+  [0.09, 659.25, 0.16],
+  [0.18, 783.99, 0.16],
+  [0.27, 1046.5, 0.4],
+];
+
 export function fanfare() {
-  [523.25, 659.25, 783.99, 1046.5].forEach((f, i) =>
-    tone(f, i === 3 ? 0.4 : 0.16, 0.7, i * 0.09)
-  );
+  for (const [delay, f, dur] of FANFARE) tone(f, dur, 0.7, delay);
 }
